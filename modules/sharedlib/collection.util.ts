@@ -66,3 +66,15 @@ export function countMap<T>(arr: T[]): Map<T, number> {
     }
     return m;
 }
+
+export function cartesianProduct<T>(...allEntries: T[][]): T[][] {
+    return allEntries.reduce<T[][]>(
+        (results, entries) =>
+            results
+                .map(result => entries.map(entry => result.concat([entry])))
+                .reduce((subResults, result) => subResults.concat(result), []),
+        [[]]
+    )
+}
+
+

@@ -12,7 +12,7 @@ describe('Resolve liquid configuration', () => {
             new LiquidApplicationCommand(undefined, 1, 10, { id: 1, isWashing: false }),
         ])
         const res = conf.map(d => d.liquidAmount)
-        expect(res).to.deep.ordered.members([50, 15])
+        expect(res).to.deep.ordered.members([15, 50])
     })
 
     it('2 liquids: [1 2 2], [14 2]', () => {
