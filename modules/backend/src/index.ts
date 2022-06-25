@@ -13,7 +13,7 @@ import config from "sharedlib/tones-config.json";
 import { Logger } from "tslog";
 
 
-let container = new Container();
+export let container = new Container();
 container.bind(Container).toConstantValue(container);
 
 container.load(buildProviderModule());

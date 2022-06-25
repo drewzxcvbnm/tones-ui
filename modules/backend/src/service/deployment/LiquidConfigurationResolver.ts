@@ -1,36 +1,19 @@
+import { inject } from "inversify";
 import { provide } from "inversify-binding-decorators";
 import * as lodash from "lodash";
 import { getComparator, groupBy } from "sharedlib/collection.util";
 import { DeploymentLiquidConfiguration } from "sharedlib/dto/liquidconfiguration.dto";
 import config from "sharedlib/tones-config.json";
 import { LiquidApplicationCommand } from "../../service/commands/Commands";
-
-class TubeConfigState {
-    tubeSizeCountMap: Map<number, number> = new Map(
-        config["liquids-tube-holders"]
-            .filter(th => !th["for-washing"])
-            .map(th => [th["size"], th["count"]])
-    )
-
-    getAvailableSizes() {
-        return Array.from(this.tubeSizeCountMap.entries()).filter(kv => kv[1] > 0).map(kv => kv[0])
-    }
-
-    allocateLiquidSlotOfSize(size: number) {
-        const sizeCount = config["liquids-tube-holders"]
-            .filter(th => th["size"] === size)
-            .map(th => th["count"])[0]
-        const previousLiquidSlots = config["liquids-tube-holders"]
-            .filter(th => th["size"] < size)
-            .map(th => th["count"])
-            .reduce((a, b) => a + b, 0)
-        this.tubeSizeCountMap.set(size, this.tubeSizeCountMap.get(size)! - 1)
-        return previousLiquidSlots + sizeCount - this.tubeSizeCountMap.get(size)!;
-    }
-}
+import { LiquidConfigurationOptimizer } from "./LiquidConfigurationOptimizer";
+import { LiquidDeploymentInfo } from "./LiquidDeploymentInfo";
+import { TubeConfigState } from "./TubeConfigState";
 
 @provide(LiquidConfigurationResolver)
 export class LiquidConfigurationResolver {
+
+    @inject(LiquidConfigurationOptimizer)
+    private optimizer: LiquidConfigurationOptimizer;
 
     public resolveLiquidConfiguration(commands: LiquidApplicationCommand[]): DeploymentLiquidConfiguration[] {
         const state = new TubeConfigState();
@@ -39,7 +22,7 @@ export class LiquidConfigurationResolver {
         const washingTubeConfig = config["liquids-tube-holders"].filter(t => t["for-washing"])[0]
         state.tubeSizeCountMap.set(washingTubeConfig.size, washingTubeConfig.count);
         const washingDeploymentConfig = this.getLiquidsConfiguration(commands.filter(la => la.liquidInfo.isWashing), state)
-        return lodash.concat(nonWashingDeploymentConfig, washingDeploymentConfig)
+        return lodash.concat(this.optimizer.optimizeLiquidConfig(nonWashingDeploymentConfig, state), washingDeploymentConfig)
     }
 
     private getLiquidsConfiguration(commands: LiquidApplicationCommand[], state: TubeConfigState): DeploymentLiquidConfiguration[] {
@@ -51,7 +34,7 @@ export class LiquidConfigurationResolver {
     private getLiquidConfiguration(commands: LiquidApplicationCommand[], state: TubeConfigState): DeploymentLiquidConfiguration[] {
         let acc = 0;
         let hydratedCommands: LiquidApplicationCommand[] = [];
-        const liquidConfig: DeploymentLiquidConfiguration[] = []
+        const liquidConfig: LiquidDeploymentInfo[] = []
         for (let i = 0; i < commands.length; i++) {
             const command = commands[i];
             if (command.volume > Math.max(...state.getAvailableSizes())) {
@@ -60,11 +43,13 @@ export class LiquidConfigurationResolver {
             acc += command.volume;
             if (state.getAvailableSizes().every(s => acc > s)) {
                 const maxAvailableSize = Math.max(...state.getAvailableSizes())
-                const dlc: DeploymentLiquidConfiguration = {
+                const dlc: LiquidDeploymentInfo = {
                     liquidAmount: maxAvailableSize,
                     liquidId: commands[0].liquidInfo.id!,
                     liquidSlotNumber: state.allocateLiquidSlotOfSize(maxAvailableSize),
-                    liquid: undefined
+                    liquid: undefined,
+                    usedAmount: acc - command.volume,
+                    hydratedCommands,
                 }
                 liquidConfig.push(dlc);
                 hydratedCommands.forEach(c => c.from = dlc.liquidSlotNumber);
@@ -80,11 +65,13 @@ export class LiquidConfigurationResolver {
             throw new Error("Impossible to configure liquids for protocol deployment");
         }
         const maxRequiredSize = state.getAvailableSizes()[sizeIndex]
-        const dlc: DeploymentLiquidConfiguration = {
+        const dlc: LiquidDeploymentInfo = {
             liquidAmount: maxRequiredSize,
             liquidId: commands[0].liquidInfo.id!,
             liquidSlotNumber: state.allocateLiquidSlotOfSize(maxRequiredSize),
-            liquid: undefined
+            liquid: undefined,
+            usedAmount: acc,
+            hydratedCommands,
         }
         hydratedCommands.forEach(c => c.from = dlc.liquidSlotNumber);
         liquidConfig.push(dlc);

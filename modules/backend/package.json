@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "mocha -r reflect-metadata -r ts-node/register src/**/*.test.ts",
-	"coverage": "nyc -r html -r lcov -e .ts -x \"*.test.ts\" npm run test",
+    "coverage": "nyc -r html -r lcov -e .ts -x \"*.test.ts\" npm run test",
     "prepare": "tsc",
     "build": "tsc",
     "dev": "nodemon src/index.ts",
